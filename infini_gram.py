@@ -29,7 +29,7 @@ import subprocess
 import numpy as np
 from typing import List, Tuple, Dict, Optional
 
-from naive_sa import build_sa_sorted, build_sa_sais
+from unused.naive_sa import build_sa_sorted, build_sa_sais
 
 
 # ─── Constants (must match infini-gram's binary layout) ───────────────────────
