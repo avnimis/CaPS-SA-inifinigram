@@ -188,7 +188,8 @@ def _build_sa_caps(
 
     # Tune subproblem count: target subarrays of ~16 KB so small corpora
     # don't get 8192 subproblems on a tiny file.
-    subproblem_count = max(1, min(8192, file_size // 16384))
+    # Minimum is 2: select_pivots samples (p-1) global pivots, so p=1 → div-by-zero.
+    subproblem_count = max(2, min(8192, file_size // 16384))
 
     fd_sa, raw_sa_path = tempfile.mkstemp(suffix='.caps_sa')
     os.close(fd_sa)

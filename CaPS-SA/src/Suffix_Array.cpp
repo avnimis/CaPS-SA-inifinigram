@@ -74,7 +74,7 @@ void Suffix_Array<T_idx_>::merge(const idx_t* X, idx_t len_x, const idx_t* Y, id
 
             // Whether the shorter suffix is a prefix of the longer one.
             Z[k] = (n == max_n ?    std::max(X[i], Y[j]) :
-                                    (T_[X[i] + n] < T_[Y[j] + n] ? X[i] : Y[j]));
+                                    ((unsigned char)T_[X[i] + n] < (unsigned char)T_[Y[j] + n] ? X[i] : Y[j]));
             LCP_z[k] = (Z[k] == X[i] ? l_x : m);
             m = n;
         }
@@ -286,7 +286,7 @@ T_idx_ Suffix_Array<T_idx_>::upper_bound(const idx_t* const X, const idx_t n, co
                 l = c, lcp_l = lcp_c;
         }
         else    // They mismatch within their relevant prefixes.
-            if(suf[lcp_c] < P[lcp_c])   // X[c] < P
+            if((unsigned char)suf[lcp_c] < (unsigned char)P[lcp_c])   // X[c] < P
                 l = c, lcp_l = lcp_c;
             else    // P < X[c]
                 r = c, lcp_r = lcp_c, soln = c;
@@ -535,14 +535,14 @@ bool Suffix_Array<T_idx_>::is_sorted(const idx_t* const X, const idx_t* const L,
         const auto l = std::min(n_ - X[i - 1], n_ - X[i]);
 
         for(idx_t j = 0; j < l; ++j)
-            if(x[j] < y[j])
+            if((unsigned char)x[j] < (unsigned char)y[j])
             {
                 if(L[i] != j)
                     return false;
 
                 break;
             }
-            else if(x[j] > y[j])
+            else if((unsigned char)x[j] > (unsigned char)y[j])
                 return false;
     }
 
