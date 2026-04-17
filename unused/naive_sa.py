@@ -15,7 +15,7 @@ These are correct for any token sequence but only practical for small
 corpora (~50k tokens for sorted, ~500k for sais). For production use
 the rust or caps_sa builders in infini_gram.py instead.
 """
-v
+
 import struct
 from typing import List
 
