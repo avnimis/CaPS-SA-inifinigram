@@ -151,32 +151,6 @@ def _build_sa_rust(
         shutil.rmtree(parts_dir,  ignore_errors=True)
         shutil.rmtree(merged_dir, ignore_errors=True)
 
-def _encode_for_caps(tokens: np.ndarray) -> bytes:
-    """
-    Encode each uint16 token as 8 bytes, order-preserving through
-    CaPS-SA's DNA mapping at the BYTE level (low byte first, high byte second).
-    Each byte is encoded as 4 pairs of 2 bits using enc_map.
-    enc_map preserves order: A(00) < C(01) < G(11) < T(10)
-    """
-    enc_map = np.array([0x01, 0x03, 0x07, 0x05], dtype=np.uint8)
-    
-    # split each uint16 into low byte and high byte
-    lo = (tokens & 0xFF).astype(np.uint8)
-    hi = (tokens >> 8).astype(np.uint8)
-
-    # extract all 4 bit-pairs from each byte via vectorized shifts
-    # shape: (n_tokens, 2 bytes, 4 bit-pairs) → (n_tokens, 8)
-    shifts = np.array([6, 4, 2, 0], dtype=np.uint8)
-    lo_pairs = (lo[:, None] >> shifts) & 0x3   # (N, 4)
-    hi_pairs = (hi[:, None] >> shifts) & 0x3   # (N, 4)
-
-    # map bit-pairs to enc_map values and interleave [lo, hi] per token
-    encoded = np.empty((len(tokens), 8), dtype=np.uint8)
-    encoded[:, 0:4] = enc_map[lo_pairs]
-    encoded[:, 4:8] = enc_map[hi_pairs]
-
-    return encoded.ravel().tobytes()
- 
 
 
 def _build_sa_caps(
@@ -186,60 +160,62 @@ def _build_sa_caps(
     n_threads: int = 1,
 ) -> None:
     """
-    Build the suffix array via a CaPS-SA binary.
+    Build the suffix array via the CaPS-SA binary.
 
-    Expected binary interface::
+    The binary is invoked as::
 
-        caps_bin <input_path> <output_path>
+        caps_bin <input_path> <output_path> <subproblem_count>
 
-    The binary must write its output in CaPS_SA::Suffix_Array::dump() format:
+    Output format (dump_sa_only):
 
-        [8 bytes]   n    — std::size_t (uint64 LE), character count
-        [nxw bytes] SA   — idx_t[n]: uint32 if n≤2³², else uint64; byte positions
-        [nxw bytes] LCP  — idx_t[n]: same width; discarded here
+        [8 bytes]   n    — std::size_t (uint64 LE), byte count of input
+        [n×4 bytes] SA   — uint32[n] byte positions (uint64 if n > 2^32)
 
-    SA values are byte positions in tok_path.  Only token-aligned (even)
-    positions are retained and written as BYTES_PER_PTR-byte LE byte-offset
-    pointers in table_path.
+    tok_path is passed directly as input (no pre-encoding).  The CaPS-SA
+    binary must be built without the DNA character-mapping step so raw
+    uint16 LE token bytes are sorted as-is — which matches the byte-level
+    comparison order used by InfiniGramEngine._cmp().
 
-    Note: the CaPS-SA binary in this project maps input bytes to {A,C,T,G}
-    before constructing the SA (designed for DNA sequences).  For correct
-    results over binary uint16 token data you need a CaPS-SA build without
-    that character-mapping step in src/main.cpp.
+    Only SA entries at BYTES_PER_TOKEN-aligned positions are kept (token
+    boundaries), then written as BYTES_PER_PTR-byte LE byte-offset pointers.
     """
+    file_size = os.path.getsize(tok_path)
+    if file_size == 0:
+        raise ValueError("tokenized.bin is empty; cannot build SA")
+
     env = os.environ.copy()
     env['PARLAY_NUM_THREADS'] = str(n_threads)
 
-    fd_enc, enc_path   = tempfile.mkstemp(suffix='.caps_enc')
-    fd_sa,  raw_sa_path = tempfile.mkstemp(suffix='.caps_sa')
-    os.close(fd_enc)
+    # Tune subproblem count: target subarrays of ~16 KB so small corpora
+    # don't get 8192 subproblems on a tiny file.
+    subproblem_count = max(1, min(8192, file_size // 16384))
+
+    fd_sa, raw_sa_path = tempfile.mkstemp(suffix='.caps_sa')
     os.close(fd_sa)
 
     try:
-        tokens = np.fromfile(tok_path, dtype='<u2')
-        enc = _encode_for_caps(tokens)
-
-        with open(enc_path, 'wb') as f:
-            f.write(enc)
-
-        subprocess.run([caps_bin, enc_path, raw_sa_path], env=env, check=True)
+        subprocess.run(
+            [caps_bin, tok_path, raw_sa_path, str(subproblem_count)],
+            env=env, check=True,
+        )
 
         with open(raw_sa_path, 'rb') as f:
-            n      = struct.unpack('<Q', f.read(8))[0]
-            sa_raw = np.frombuffer(f.read(n * 4), dtype='<u4')
+            n = struct.unpack('<Q', f.read(8))[0]
+            # Width matches the C++ template instantiation: uint32 when n ≤ 2^32.
+            w, dtype = (4, '<u4') if n <= 0xFFFFFFFF else (8, '<u8')
+            sa_raw = np.frombuffer(f.read(n * w), dtype=dtype)
 
-
-        # keep only positions at token bound postitions
-        sa_aligned = sa_raw[sa_raw % 8 == 0]
+        # Keep only byte positions that fall on token boundaries.
+        sa_aligned = sa_raw[sa_raw % BYTES_PER_TOKEN == 0]
 
         with open(table_path, 'wb') as f:
-            byte_offs = (sa_aligned.astype(np.uint64) // 8 * BYTES_PER_TOKEN).astype('<u8')
+            # SA entries are already byte offsets into tokenized.bin.
+            byte_offs = sa_aligned.astype('<u8')
             raw8 = byte_offs.view(np.uint8).reshape(-1, 8)
             f.write(np.ascontiguousarray(raw8[:, :BYTES_PER_PTR]).tobytes())
     finally:
-        for p in [enc_path, raw_sa_path]:
-            if os.path.exists(p):
-                os.remove(p)
+        if os.path.exists(raw_sa_path):
+            os.remove(raw_sa_path)
 
 
 

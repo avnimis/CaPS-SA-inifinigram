@@ -178,6 +178,10 @@ public:
 
     // Dumps the suffix array and the LCP array into the stream `output`.
     void dump(std::ofstream& output);
+
+    // Dumps only the suffix array (no LCP) into the stream `output`.
+    // Format: [8 bytes] n (uint64), [n × sizeof(idx_t) bytes] SA.
+    void dump_sa_only(std::ofstream& output);
 };
 
 

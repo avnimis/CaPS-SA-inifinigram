@@ -510,6 +510,20 @@ void Suffix_Array<T_idx_>::dump(std::ofstream& output)
 
 
 template <typename T_idx_>
+void Suffix_Array<T_idx_>::dump_sa_only(std::ofstream& output)
+{
+    const auto t_start = now();
+
+    const std::size_t n = n_;
+    output.write(reinterpret_cast<const char*>(&n), sizeof(std::size_t));
+    output.write(reinterpret_cast<const char*>(SA_), n_ * sizeof(idx_t));
+
+    const auto t_end = now();
+    std::cerr << "Dumped the suffix array (SA only). Time taken: " << duration(t_end - t_start) << " seconds.\n";
+}
+
+
+template <typename T_idx_>
 bool Suffix_Array<T_idx_>::is_sorted(const idx_t* const X, const idx_t* const L, const idx_t n) const
 {
     if(L[0] != 0)
