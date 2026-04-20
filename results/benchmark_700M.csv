@@ -1,0 +1,2 @@
+builder,n_tokens,n_threads,t_total_s,t_sa_s,mem_mb,lat_1g_med,lat_1g_p99,lat_2g_med,lat_2g_p99,lat_4g_med,lat_4g_p99
+rust,701400000,4,498.177,278.6,0.0,103.56,460.81,136.41,374.51,170.99,382.35
